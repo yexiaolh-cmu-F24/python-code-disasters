@@ -6,11 +6,13 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
         sh '''
-          set -euxo pipefail
+          set -eux
           SCAN_VERSION="5.0.1.3006"
-          curl -sL -o scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SCAN_VERSION}-linux-x64.zip
-          unzip -q scanner.zip
-          ./sonar-scanner-${SCAN_VERSION}-linux-x64/bin/sonar-scanner \
+          SCAN_DIR="sonar-scanner-${SCAN_VERSION}-linux-x64"
+          curl -sL -o scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCAN_DIR}.zip
+          rm -rf "${SCAN_DIR}" || true
+          jar xf scanner.zip
+          "./${SCAN_DIR}/bin/sonar-scanner" \
             -Dsonar.host.url="$SONAR_HOST_URL" \
             -Dsonar.login="$SONAR_TOKEN" \
             -Dsonar.projectKey="python-code-disasters" \
