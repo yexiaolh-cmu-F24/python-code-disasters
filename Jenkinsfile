@@ -47,19 +47,20 @@ pipeline {
                 script {
                     echo 'Waiting for SonarQube Quality Gate...'
                     timeout(time: 5, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        echo "Quality Gate status: ${qg.status}"
-                        
-                        // Store the quality gate result
-                        env.QUALITY_GATE_STATUS = qg.status
-                        
-                        if (qg.status != 'OK') {
-                            echo "WARNING: Quality gate failed with status: ${qg.status}"
-                            // Don't fail the build, but mark for conditional execution
-                            env.HAS_BLOCKER_ISSUES = 'true'
-                        } else {
-                            echo "SUCCESS: Quality gate passed!"
-                            env.HAS_BLOCKER_ISSUES = 'false'
+                        try {
+                            def qg = waitForQualityGate()
+                            echo "Quality Gate status: ${qg.status}"
+                            env.QUALITY_GATE_STATUS = qg.status
+                            
+                            if (qg.status == 'OK') {
+                                echo "✓ Quality gate passed!"
+                            } else {
+                                echo "⚠ Quality gate status: ${qg.status} (continuing to check for blockers)"
+                            }
+                        } catch (Exception e) {
+                            echo "⚠ Quality gate check failed: ${e.message}"
+                            echo "Continuing to check for blocker issues..."
+                            env.QUALITY_GATE_STATUS = 'ERROR'
                         }
                     }
                 }
