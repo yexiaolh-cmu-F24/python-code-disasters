@@ -29,14 +29,14 @@ pipeline {
                     
                     // Run SonarQube scanner
                     withSonarQubeEnv('SonarQube') {
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                                -Dsonar.projectKey=python-code-disasters \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=${SONARQUBE_URL} \
-                                -Dsonar.python.version=3.8,3.9,3.10 \
-                                -Dsonar.language=py
-                        """
+                    sh """
+                        ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=Python-Code-Disasters \
+                            -Dsonar.sources=. \
+                            -Dsonar.host.url=${SONARQUBE_URL} \
+                            -Dsonar.python.version=3.8,3.9,3.10 \
+                            -Dsonar.language=py
+                    """
                     }
                 }
             }
