@@ -1,11 +1,6 @@
 pipeline {
     agent any
     
-    tools {
-        // Use the SonarQube Scanner tool configured in Jenkins
-        // The name must match exactly what you configured in Jenkins Tools
-    }
-    
     environment {
         GCP_PROJECT_ID = "${env.GCP_PROJECT_ID}"
         HADOOP_CLUSTER_NAME = "${env.HADOOP_CLUSTER_NAME}"
