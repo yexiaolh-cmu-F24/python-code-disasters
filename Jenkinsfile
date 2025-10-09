@@ -74,7 +74,7 @@ pipeline {
                     def blockerCount = sh(
                         script: """
                             curl -s -u admin:admin \
-                            '${SONARQUBE_URL}/api/issues/search?componentKeys=python-code-disasters&severities=BLOCKER&resolved=false' \
+                            '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false' \
                             | grep -o '"total":[0-9]*' | cut -d':' -f2 || echo '0'
                         """,
                         returnStdout: true
