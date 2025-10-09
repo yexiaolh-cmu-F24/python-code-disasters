@@ -7,14 +7,19 @@ pipeline {
       steps {
         sh '''
           set -eux
-          SCAN_VERSION="5.0.1.3006"
-          ZIP_FILE="sonar-scanner-cli-${SCAN_VERSION}-linux-x64.zip"
-          SCAN_DIR="sonar-scanner-${SCAN_VERSION}-linux-x64"
-          BASE_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli"
-          curl -fsSL -o "${ZIP_FILE}" "${BASE_URL}/${ZIP_FILE}"
-          rm -rf "${DIR_NAME}" || true
-          jar xf "${ZIP_FILE}"
-          "./${DIR_NAME}/bin/sonar-scanner" \
+          VER="5.0.1.3006"
+          ZIP="sonar-scanner-cli-${VER}-linux-x64.zip"
+          DIR="sonar-scanner-${VER}-linux-x64"
+
+          URL1="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${ZIP}"
+          URL2="https://repo1.maven.org/maven2/org/sonarsource/scanner/cli/sonar-scanner-cli/${VER}/${ZIP}"
+
+          curl -fsSL -A "curl/7.x Jenkins" -o "${ZIP}" "${URL1}" || \
+          curl -fsSL -A "curl/7.x Jenkins" -o "${ZIP}" "${URL2}"
+
+          rm -rf "${DIR}" || true
+          jar xf "${ZIP}"
+          "./${DIR}/bin/sonar-scanner" \
             -Dsonar.host.url="$SONAR_HOST_URL" \
             -Dsonar.login="$SONAR_TOKEN" \
             -Dsonar.projectKey="python-code-disasters" \
