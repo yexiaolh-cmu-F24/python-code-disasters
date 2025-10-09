@@ -8,11 +8,13 @@ pipeline {
         sh '''
           set -eux
           SCAN_VERSION="5.0.1.3006"
+          ZIP_FILE="sonar-scanner-cli-${SCAN_VERSION}-linux-x64.zip"
           SCAN_DIR="sonar-scanner-${SCAN_VERSION}-linux-x64"
-          curl -sL -o scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCAN_DIR}.zip
-          rm -rf "${SCAN_DIR}" || true
-          jar xf scanner.zip
-          "./${SCAN_DIR}/bin/sonar-scanner" \
+          BASE_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli"
+          curl -fsSL -o "${ZIP_FILE}" "${BASE_URL}/${ZIP_FILE}"
+          rm -rf "${DIR_NAME}" || true
+          jar xf "${ZIP_FILE}"
+          "./${DIR_NAME}/bin/sonar-scanner" \
             -Dsonar.host.url="$SONAR_HOST_URL" \
             -Dsonar.login="$SONAR_TOKEN" \
             -Dsonar.projectKey="python-code-disasters" \
