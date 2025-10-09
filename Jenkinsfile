@@ -1,6 +1,11 @@
 pipeline {
     agent any
     
+    tools {
+        // Use the SonarQube Scanner tool configured in Jenkins
+        // The name must match exactly what you configured in Jenkins Tools
+    }
+    
     environment {
         GCP_PROJECT_ID = "${env.GCP_PROJECT_ID}"
         HADOOP_CLUSTER_NAME = "${env.HADOOP_CLUSTER_NAME}"
@@ -24,16 +29,19 @@ pipeline {
                 script {
                     echo 'Running SonarQube analysis...'
                     
+                    // Get the SonarQube Scanner tool
+                    def scannerHome = tool 'SonarQube Scanner'
+                    
                     // Run SonarQube scanner
                     withSonarQubeEnv('SonarQube') {
-                        sh '''
-                            sonar-scanner \
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
                                 -Dsonar.projectKey=python-code-disasters \
                                 -Dsonar.sources=. \
                                 -Dsonar.host.url=${SONARQUBE_URL} \
                                 -Dsonar.python.version=3.8,3.9,3.10 \
                                 -Dsonar.language=py
-                        '''
+                        """
                     }
                 }
             }
