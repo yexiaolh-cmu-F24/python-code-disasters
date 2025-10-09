@@ -19,6 +19,55 @@ pipeline {
             }
         }
         
+        stage('Setup GCloud SDK') {
+            steps {
+                script {
+                    echo 'Checking for gcloud SDK...'
+                    def gcloudInstalled = sh(script: 'command -v gcloud || echo "not_found"', returnStdout: true).trim()
+                    
+                    if (gcloudInstalled == 'not_found') {
+                        echo 'Installing gcloud SDK (this may take a few minutes on first run)...'
+                        sh '''
+                            set -e
+                            # Install to user directory if not root
+                            export CLOUD_SDK_DIR=/var/jenkins_home/google-cloud-sdk
+                            
+                            if [ ! -d "$CLOUD_SDK_DIR" ]; then
+                                echo "Downloading gcloud SDK..."
+                                cd /var/jenkins_home
+                                curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-459.0.0-linux-x86_64.tar.gz
+                                tar -xzf google-cloud-sdk-459.0.0-linux-x86_64.tar.gz
+                                rm google-cloud-sdk-459.0.0-linux-x86_64.tar.gz
+                                
+                                echo "Installing gcloud SDK..."
+                                ./google-cloud-sdk/install.sh --quiet --usage-reporting=false --path-update=false
+                            fi
+                            
+                            # Add to PATH for this session
+                            export PATH=$CLOUD_SDK_DIR/bin:$PATH
+                            
+                            # Verify installation
+                            gcloud version
+                            gsutil version
+                        '''
+                        echo '✓ gcloud SDK installed successfully'
+                    } else {
+                        echo '✓ gcloud SDK already installed'
+                        sh 'gcloud version'
+                    }
+                    
+                    // Add gcloud to PATH for subsequent stages
+                    env.PATH = "/var/jenkins_home/google-cloud-sdk/bin:${env.PATH}"
+                    
+                    // Configure gcloud with project
+                    sh """
+                        gcloud config set project ${GCP_PROJECT_ID}
+                        echo "✓ Configured for project: ${GCP_PROJECT_ID}"
+                    """
+                }
+            }
+        }
+        
         stage('SonarQube Analysis') {
             steps {
                 script {
@@ -102,29 +151,95 @@ pipeline {
             }
         }
         
-        stage('Hadoop Job Execution') {
+        stage('Upload Code to GCS') {
             when {
                 environment name: 'RUN_HADOOP_JOB', value: 'true'
             }
             steps {
                 script {
-                    echo '✅ HADOOP JOB WOULD RUN HERE'
-                    echo '════════════════════════════════════════════════'
-                    echo 'Code Quality: PASSED (No blocker issues)'
-                    echo 'Action: Executing Hadoop MapReduce job...'
-                    echo '════════════════════════════════════════════════'
-                    echo ''
-                    echo '📊 Simulated Hadoop Job Output:'
-                    echo 'Cluster: ${HADOOP_CLUSTER_NAME}'
-                    echo 'Region: ${HADOOP_REGION}'
-                    echo 'Job: Line Counter (PySpark)'
-                    echo ''
-                    echo '✓ Job submitted successfully'
-                    echo '✓ Processing Python files from repository'
-                    echo '✓ Results: 1,247 total lines counted'
-                    echo ''
-                    echo 'This demonstrates Scenario B:'
-                    echo 'Clean code → Blocker count = 0 → Hadoop job executes'
+                    echo 'Uploading repository code to GCS for Hadoop processing...'
+                    sh """
+                        # Create a clean copy of the repository
+                        rm -rf /tmp/repo-upload
+                        mkdir -p /tmp/repo-upload
+                        
+                        # Copy Python files to upload directory
+                        find . -name '*.py' -type f -exec cp --parents {} /tmp/repo-upload/ \\;
+                        
+                        # Upload to GCS
+                        echo "Uploading to ${REPO_GCS_PATH}..."
+                        gsutil -m rm -rf ${REPO_GCS_PATH} || true
+                        gsutil -m cp -r /tmp/repo-upload/* ${REPO_GCS_PATH}/
+                        
+                        echo "✓ Code uploaded to ${REPO_GCS_PATH}"
+                        gsutil ls ${REPO_GCS_PATH}/
+                    """
+                }
+            }
+        }
+        
+        stage('Run Hadoop MapReduce Job') {
+            when {
+                environment name: 'RUN_HADOOP_JOB', value: 'true'
+            }
+            steps {
+                script {
+                    echo 'Submitting Hadoop MapReduce job to Dataproc cluster...'
+                    
+                    def timestamp = sh(script: 'date +%Y%m%d_%H%M%S', returnStdout: true).trim()
+                    def outputPath = "gs://${OUTPUT_BUCKET}/results/${timestamp}"
+                    
+                    sh """
+                        echo "════════════════════════════════════════════════"
+                        echo "  Submitting Hadoop Job to Dataproc Cluster"
+                        echo "════════════════════════════════════════════════"
+                        echo "Cluster: ${HADOOP_CLUSTER_NAME}"
+                        echo "Region: ${HADOOP_REGION}"
+                        echo "Input: ${REPO_GCS_PATH}"
+                        echo "Output: ${outputPath}"
+                        echo ""
+                        
+                        gcloud dataproc jobs submit pyspark \\
+                            gs://${STAGING_BUCKET}/hadoop-jobs/line_counter_pyspark.py \\
+                            --cluster=${HADOOP_CLUSTER_NAME} \\
+                            --region=${HADOOP_REGION} \\
+                            --project=${GCP_PROJECT_ID} \\
+                            -- ${REPO_GCS_PATH} ${outputPath}
+                        
+                        echo ""
+                        echo "✓ Hadoop job completed successfully!"
+                    """
+                    
+                    env.HADOOP_OUTPUT_PATH = outputPath
+                }
+            }
+        }
+        
+        stage('Display Hadoop Results') {
+            when {
+                environment name: 'RUN_HADOOP_JOB', value: 'true'
+            }
+            steps {
+                script {
+                    echo 'Retrieving and displaying Hadoop job results...'
+                    
+                    sh """
+                        echo ""
+                        echo "════════════════════════════════════════════════"
+                        echo "      HADOOP MAPREDUCE JOB RESULTS"
+                        echo "════════════════════════════════════════════════"
+                        echo ""
+                        echo "Line counts for each Python file:"
+                        echo ""
+                        
+                        # Download and display results
+                        gsutil cat ${HADOOP_OUTPUT_PATH}/part-* 2>/dev/null || echo "Results processing..."
+                        
+                        echo ""
+                        echo "════════════════════════════════════════════════"
+                        echo "Results saved to: ${HADOOP_OUTPUT_PATH}"
+                        echo "════════════════════════════════════════════════"
+                    """
                 }
             }
         }
@@ -148,6 +263,7 @@ pipeline {
                         echo '   ✓ No blocker issues detected in SonarQube'
                         echo '   ✓ Code quality standards met'
                         echo '   ✓ Hadoop MapReduce job EXECUTED'
+                        echo "   ✓ Results location: ${env.HADOOP_OUTPUT_PATH ?: 'N/A'}"
                         echo ''
                         echo '   This proves conditional logic: Clean code → Run Hadoop'
                     } else {
