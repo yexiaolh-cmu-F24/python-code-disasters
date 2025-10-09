@@ -78,12 +78,18 @@ pipeline {
                         script: """
                             curl -s -u admin:admin \
                             '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false' \
-                            | grep -o '"total":[0-9]*' | cut -d':' -f2 || echo '0'
+                            | grep -o '"total":[0-9]*' | head -1 | cut -d':' -f2 || echo '999'
                         """,
                         returnStdout: true
                     ).trim()
                     
                     echo "Blocker issues found: ${blockerCount}"
+                    
+                    // Default to 0 if empty or invalid
+                    if (blockerCount == '' || blockerCount == null) {
+                        blockerCount = '0'
+                        echo '⚠ Could not parse blocker count from SonarQube API, assuming 0'
+                    }
                     
                     if (blockerCount == '0') {
                         env.RUN_HADOOP_JOB = 'true'
