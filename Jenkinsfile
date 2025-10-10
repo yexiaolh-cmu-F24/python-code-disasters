@@ -146,6 +146,10 @@ pipeline {
                         echo "⚠ Could not read task ID from report file: ${e.message}"
                     }
                     
+                    // Define variables outside withCredentials block so they're accessible later
+                    def qualityGateStatus = 'UNKNOWN'
+                    def blockerCount = 'UNKNOWN'
+                    
                     // Use Jenkins credentials for SonarQube authentication
                     withCredentials([usernamePassword(
                         credentialsId: 'sonarqube-admin-token',
@@ -209,9 +213,7 @@ pipeline {
                         echo '          Checking Quality Gate and Blocker Issues        '
                         echo '═══════════════════════════════════════════════════════════'
                         
-                        // Now check the quality gate status
-                        def qualityGateStatus = 'UNKNOWN'
-                        def blockerCount = 'UNKNOWN'
+                        // Check the quality gate status and blocker count
                         def maxRetries = 5
                         def retryDelay = 10
                         
@@ -231,8 +233,8 @@ pipeline {
                                 echo "Quality Gate API Response: ${qgResponse}"
                                 
                                 def qgMatch = (qgResponse =~ /"status":"([^"]+)"/)
-                                if (qgMatch) {
-                                    qualityGateStatus = qgMatch[0][1]
+                                if (qgMatch.find()) {
+                                    qualityGateStatus = qgMatch.group(1)
                                     echo "✓ Quality Gate Status: ${qualityGateStatus}"
                                 }
                                 
@@ -248,8 +250,8 @@ pipeline {
                                 echo "Blocker Issues API Response: ${blockerResponse}"
                                 
                                 def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
-                                if (blockerMatch) {
-                                    blockerCount = blockerMatch[0][1]
+                                if (blockerMatch.find()) {
+                                    blockerCount = blockerMatch.group(1)
                                     echo "✓ Blocker Issues Count: ${blockerCount}"
                                 }
                                 
