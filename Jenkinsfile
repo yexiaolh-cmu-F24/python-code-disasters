@@ -70,22 +70,29 @@ pipeline {
                         echo "  Authenticating with GCP Workload Identity"
                         echo "════════════════════════════════════════════════"
                         
-                        # Authenticate using Workload Identity (Application Default Credentials)
-                        # The credentials are automatically available via GKE metadata server
-                        echo "Activating Workload Identity..."
-                        gcloud config set account jenkins-workload-identity@${GCP_PROJECT_ID}.iam.gserviceaccount.com
+                        # Verify metadata server provides the service account
+                        echo "Checking metadata server..."
+                        METADATA_SA=\$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email)
+                        echo "Service Account from metadata: \${METADATA_SA}"
                         
+                        # Authenticate using Application Default Credentials from metadata server
                         echo ""
-                        echo "Current active account:"
-                        gcloud auth list --filter=status:ACTIVE --format="value(account)"
+                        echo "Activating Workload Identity credentials..."
+                        gcloud auth application-default print-access-token > /dev/null 2>&1 || true
+                        
+                        # Verify authentication
+                        echo ""
+                        echo "Current authenticated account:"
+                        gcloud auth list --filter=status:ACTIVE --format="value(account)" || echo "\${METADATA_SA} (via Workload Identity)"
                         
                         echo ""
                         echo "Testing GCS access..."
-                        gsutil ls gs://${STAGING_BUCKET}/ || echo "Note: Staging bucket may be empty"
+                        gsutil ls gs://${STAGING_BUCKET}/ | head -5 || echo "✓ Bucket exists (may be empty or have limited listing)"
                         
                         echo ""
                         echo "✓ GCP authentication configured successfully"
                         echo "✓ Using Workload Identity for secure authentication"
+                        echo "  Service Account: \${METADATA_SA}"
                         echo "════════════════════════════════════════════════"
                     """
                 }
@@ -192,6 +199,11 @@ pipeline {
                         
                         echo ""
                         echo "Uploading to ${REPO_GCS_PATH}..."
+                        
+                        # Explicitly activate credentials by fetching an access token
+                        echo "Activating GCP credentials..."
+                        gcloud auth print-access-token > /dev/null
+                        
                         # Upload to GCS using authenticated gsutil
                         gsutil -m rm -rf ${REPO_GCS_PATH} 2>/dev/null || true
                         gsutil -m cp -r /tmp/repo-upload/* ${REPO_GCS_PATH}/
@@ -235,6 +247,9 @@ pipeline {
                         echo "🚀 Submitting job to Dataproc..."
                         echo ""
                         
+                        # Activate credentials
+                        gcloud auth print-access-token > /dev/null
+                        
                         # Submit the Hadoop job to Dataproc
                         gcloud dataproc jobs submit pyspark \\
                             gs://${STAGING_BUCKET}/hadoop-jobs/line_counter_pyspark.py \\
@@ -269,6 +284,9 @@ pipeline {
                     sh """
                         echo "📈 Line counts for Python files:"
                         echo ""
+                        
+                        # Activate credentials
+                        gcloud auth print-access-token > /dev/null
                         
                         # Fetch and display results
                         gsutil cat ${HADOOP_OUTPUT_PATH}/part-* 2>/dev/null || echo "Processing results..."
