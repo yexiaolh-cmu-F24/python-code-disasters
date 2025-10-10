@@ -246,9 +246,47 @@ pipeline {
                         echo "🚀 Submitting job to Dataproc..."
                         echo ""
                         
-                        # Submit the Hadoop job to Dataproc (uses Workload Identity automatically)
+                        # Create a simple PySpark line counter script
+                        cat > /tmp/line_counter_job.py << 'PYSPARK_SCRIPT'
+from pyspark import SparkContext
+import sys
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: line_counter_job.py <input_path> <output_path>")
+        sys.exit(1)
+    
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
+    
+    sc = SparkContext(appName="LineCounter")
+    
+    # Read all Python files from input path
+    input_files = input_path + "/**/*.py"
+    lines_rdd = sc.textFile(input_files)
+    
+    # Get input file name for each line and count lines per file
+    def extract_filename_and_count(line):
+        # Get the input file name from Spark's input metadata
+        return (1,)  # Simple count
+    
+    # Count total lines per file by using wholeTextFiles
+    files_rdd = sc.wholeTextFiles(input_files)
+    line_counts = files_rdd.map(lambda x: (x[0].split('/')[-1], len(x[1].split('\\n'))))
+    
+    # Sort by filename and save
+    sorted_counts = line_counts.sortByKey()
+    sorted_counts.saveAsTextFile(output_path)
+    
+    sc.stop()
+PYSPARK_SCRIPT
+                        
+                        # Upload the job script to GCS
+                        gcloud storage cp /tmp/line_counter_job.py gs://${STAGING_BUCKET}/jobs/line_counter_job.py
+                        
+                        # Submit the PySpark job to Dataproc (uses Workload Identity automatically)
                         gcloud dataproc jobs submit pyspark \\
-                            gs://${STAGING_BUCKET}/hadoop-jobs/line_counter_pyspark.py \\
+                            gs://${STAGING_BUCKET}/jobs/line_counter_job.py \\
                             --cluster=${HADOOP_CLUSTER_NAME} \\
                             --region=${HADOOP_REGION} \\
                             --project=${GCP_PROJECT_ID} \\
