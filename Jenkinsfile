@@ -124,27 +124,12 @@ pipeline {
             }
         }
         
-        stage('Quality Gate') {
+        stage('Wait for SonarQube Processing') {
             steps {
                 script {
-                    echo 'Waiting for SonarQube Quality Gate...'
-                    timeout(time: 5, unit: 'MINUTES') {
-                        try {
-                            def qg = waitForQualityGate()
-                            echo "Quality Gate status: ${qg.status}"
-                            env.QUALITY_GATE_STATUS = qg.status
-                            
-                            if (qg.status == 'OK') {
-                                echo "✓ Quality gate passed!"
-                            } else {
-                                echo "⚠ Quality gate status: ${qg.status} (continuing to check for blockers)"
-                            }
-                        } catch (Exception e) {
-                            echo "⚠ Quality gate check failed: ${e.message}"
-                            echo "Continuing to check for blocker issues..."
-                            env.QUALITY_GATE_STATUS = 'ERROR'
-                        }
-                    }
+                    echo 'Waiting for SonarQube to process analysis results...'
+                    // Wait for SonarQube to complete processing (it runs in background)
+                    sleep(time: 30, unit: 'SECONDS')
                 }
             }
         }
@@ -152,31 +137,60 @@ pipeline {
         stage('Check for Blocker Issues') {
             steps {
                 script {
-                    echo 'Checking for blocker issues in SonarQube results...'
+                    echo 'Checking for blocker issues...'
                     
-                    def blockerCount = sh(
-                        script: """
-                            curl -s -u admin:admin \
-                            '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false' \
-                            | grep -o '"total":[0-9]*' | head -1 | cut -d':' -f2 || echo '999'
-                        """,
-                        returnStdout: true
-                    ).trim()
+                    // Retry mechanism for API call
+                    def blockerCount = '999'  // Default to high number (assume failure)
+                    def maxRetries = 3
+                    def retryDelay = 10
                     
-                    echo "Blocker issues found: ${blockerCount}"
-                    
-                    // Default to 0 if empty or invalid
-                    if (blockerCount == '' || blockerCount == null) {
-                        blockerCount = '0'
-                        echo '⚠ Could not parse blocker count from SonarQube API, assuming 0'
+                    for (int i = 0; i < maxRetries; i++) {
+                        try {
+                            def apiResponse = sh(
+                                script: """
+                                    curl -s -u admin:admin \
+                                    '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false'
+                                """,
+                                returnStdout: true
+                            ).trim()
+                            
+                            // Parse the response
+                            def match = (apiResponse =~ /"total":(\d+)/)
+                            if (match) {
+                                blockerCount = match[0][1]
+                                echo "✓ Successfully retrieved blocker count: ${blockerCount}"
+                                break
+                            } else {
+                                echo "⚠ Attempt ${i+1}/${maxRetries}: Could not parse blocker count from API"
+                                if (i < maxRetries - 1) {
+                                    echo "Waiting ${retryDelay}s before retry..."
+                                    sleep(time: retryDelay, unit: 'SECONDS')
+                                }
+                            }
+                        } catch (Exception e) {
+                            echo "⚠ Attempt ${i+1}/${maxRetries}: API call failed - ${e.message}"
+                            if (i < maxRetries - 1) {
+                                sleep(time: retryDelay, unit: 'SECONDS')
+                            }
+                        }
                     }
                     
-                    if (blockerCount == '0') {
-                        env.RUN_HADOOP_JOB = 'true'
-                        echo '✓ No blocker issues found. Hadoop job will run.'
-                    } else {
+                    // Decision logic
+                    if (blockerCount == '999') {
+                        echo '✗ ERROR: Could not retrieve blocker count from SonarQube'
+                        echo '✗ Failing safe: Skipping Hadoop job due to uncertainty'
                         env.RUN_HADOOP_JOB = 'false'
-                        echo "✗ Found ${blockerCount} blocker issue(s). Hadoop job will NOT run."
+                        env.BLOCKER_COUNT = 'UNKNOWN'
+                    } else if (blockerCount == '0') {
+                        echo '✓ No blocker issues detected'
+                        echo '✓ Hadoop job will execute'
+                        env.RUN_HADOOP_JOB = 'true'
+                        env.BLOCKER_COUNT = '0'
+                    } else {
+                        echo "✗ Found ${blockerCount} blocker issue(s)"
+                        echo '✗ Hadoop job will be SKIPPED'
+                        env.RUN_HADOOP_JOB = 'false'
+                        env.BLOCKER_COUNT = blockerCount
                     }
                 }
             }
@@ -226,12 +240,9 @@ pipeline {
                     def outputPath = "gs://${OUTPUT_BUCKET}/results/${timestamp}"
                     
                     echo ''
-                    echo '════════════════════════════════════════════════════════════'
-                    echo '         SUBMITTING HADOOP JOB TO DATAPROC CLUSTER         '
-                    echo '════════════════════════════════════════════════════════════'
-                    echo ''
-                    echo '✅ CONDITIONAL EXECUTION TRIGGERED'
-                    echo '   Reason: No blocker issues detected in SonarQube'
+                    echo '══════════════════════════════════════════════════'
+                    echo '    Submitting Hadoop Job to Dataproc Cluster    '
+                    echo '══════════════════════════════════════════════════'
                     echo ''
                     
                     sh """
@@ -310,9 +321,9 @@ PYSPARK_SCRIPT
             steps {
                 script {
                     echo ''
-                    echo '════════════════════════════════════════════════════════════'
-                    echo '            HADOOP MAPREDUCE JOB RESULTS                    '
-                    echo '════════════════════════════════════════════════════════════'
+                    echo '══════════════════════════════════════════════════'
+                    echo '          Hadoop MapReduce Job Results          '
+                    echo '══════════════════════════════════════════════════'
                     echo ''
                     
                     sh """
@@ -336,55 +347,43 @@ PYSPARK_SCRIPT
                 script {
                     echo ''
                     echo '═══════════════════════════════════════════════════════════'
-                    echo '         WEEK 6: CONDITIONAL EXECUTION DEMONSTRATION       '
+                    echo '           CONDITIONAL EXECUTION PIPELINE SUMMARY          '
                     echo '═══════════════════════════════════════════════════════════'
                     echo ''
-                    echo "✓ SonarQube Quality Gate: ${env.QUALITY_GATE_STATUS ?: 'N/A'}"
-                    echo "✓ Blocker Issues: ${env.RUN_HADOOP_JOB == 'true' ? '0 (Clean!)' : '>0 (Issues Found)'}"
-                    echo "✓ Hadoop Job Executed: ${env.RUN_HADOOP_JOB ?: 'false'}"
+                    echo "Blocker Issues Found: ${env.BLOCKER_COUNT ?: 'N/A'}"
+                    echo "Hadoop Job Executed: ${env.RUN_HADOOP_JOB ?: 'false'}"
                     echo ''
                     
                     if (env.RUN_HADOOP_JOB == 'true') {
-                        echo '🎉 SCENARIO B: Clean Code → Hadoop Executes'
-                        echo '   ════════════════════════════════════════════════════════'
-                        echo '   Pipeline Flow:'
-                        echo '   1. GitHub Push Trigger → Jenkins receives webhook'
-                        echo '   2. Code Checkout → Repository cloned successfully'
-                        echo '   3. SonarQube Analysis → Code scanned for quality issues'
-                        echo '   4. Blocker Check → 0 blocker issues found ✓'
-                        echo '   5. Conditional Decision → Hadoop job EXECUTED ✓'
+                        echo '✅ SCENARIO: Clean Code → Hadoop Executed'
                         echo ''
-                        echo '   Results:'
-                        echo "   - Job ID: ${env.HADOOP_JOB_ID ?: 'N/A'}"
-                        echo "   - Output: ${env.HADOOP_OUTPUT_PATH ?: 'N/A'}"
+                        echo 'Pipeline Decision:'
+                        echo '  • SonarQube Analysis: Complete'
+                        echo '  • Blocker Issues: 0'
+                        echo '  • Decision: RUN Hadoop MapReduce job'
                         echo ''
-                        echo '   ✅ This demonstrates: Clean code → Run Hadoop'
+                        echo "Output: ${env.HADOOP_OUTPUT_PATH ?: 'N/A'}"
                     } else {
-                        echo '⚠️  SCENARIO A: Code Issues → Hadoop Skipped'
-                        echo '   ════════════════════════════════════════════════════════'
-                        echo '   Pipeline Flow:'
-                        echo '   1. GitHub Push Trigger → Jenkins receives webhook'
-                        echo '   2. Code Checkout → Repository cloned successfully'
-                        echo '   3. SonarQube Analysis → Code scanned for quality issues'
-                        echo '   4. Blocker Check → Blocker issues detected ✗'
-                        echo '   5. Conditional Decision → Hadoop job SKIPPED ✗'
-                        echo ''
-                        echo '   Results:'
-                        echo '   - Hadoop job NOT executed due to code quality issues'
-                        echo '   - Fix blocker issues before Hadoop processing allowed'
-                        echo ''
-                        echo '   ✅ This demonstrates: Blockers found → Skip Hadoop'
+                        if (env.BLOCKER_COUNT == 'UNKNOWN') {
+                            echo '⚠️  SCENARIO: Unable to Determine Blocker Count → Hadoop Skipped (Fail-Safe)'
+                            echo ''
+                            echo 'Pipeline Decision:'
+                            echo '  • SonarQube Analysis: Complete'
+                            echo '  • Blocker Issues: Could not retrieve from SonarQube API'
+                            echo '  • Decision: SKIP Hadoop job (fail-safe mode)'
+                        } else {
+                            echo '✗ SCENARIO: Code with Blockers → Hadoop Skipped'
+                            echo ''
+                            echo 'Pipeline Decision:'
+                            echo '  • SonarQube Analysis: Complete'
+                            echo "  • Blocker Issues: ${env.BLOCKER_COUNT}"
+                            echo '  • Decision: SKIP Hadoop job'
+                            echo ''
+                            echo 'Action Required: Fix blocker issues before Hadoop execution'
+                        }
                     }
                     
                     echo ''
-                    echo '═══════════════════════════════════════════════════════════'
-                    echo '             WEEK 6 PROJECT REQUIREMENTS MET               '
-                    echo '═══════════════════════════════════════════════════════════'
-                    echo '  ✓ Jenkins and SonarQube deployed on GKE (Week 6.1)'
-                    echo '  ✓ Intercommunication configured (Week 6.1)'
-                    echo '  ✓ GitHub integration with webhooks (Week 6.2)'
-                    echo '  ✓ Conditional Hadoop execution based on blockers (Week 6.3)'
-                    echo '  ✓ Both scenarios demonstrated (Week 6.4)'
                     echo '═══════════════════════════════════════════════════════════'
                     echo ''
                 }
@@ -404,5 +403,6 @@ PYSPARK_SCRIPT
         }
     }
 }
+
 
 
