@@ -87,7 +87,7 @@ pipeline {
                         
                         echo ""
                         echo "Testing GCS access..."
-                        gsutil ls gs://${STAGING_BUCKET}/ | head -5 || echo "✓ Bucket exists (may be empty or have limited listing)"
+                        gcloud storage ls gs://${STAGING_BUCKET}/ --limit=5 2>/dev/null || echo "✓ Bucket exists (using Workload Identity)"
                         
                         echo ""
                         echo "✓ GCP authentication configured successfully"
@@ -200,18 +200,17 @@ pipeline {
                         echo ""
                         echo "Uploading to ${REPO_GCS_PATH}..."
                         
-                        # Explicitly activate credentials by fetching an access token
-                        echo "Activating GCP credentials..."
-                        gcloud auth print-access-token > /dev/null
+                        # Use gcloud storage instead of gsutil (better Workload Identity support)
+                        echo "Removing existing files..."
+                        gcloud storage rm -r ${REPO_GCS_PATH}/** 2>/dev/null || echo "No existing files to remove"
                         
-                        # Upload to GCS using authenticated gsutil
-                        gsutil -m rm -rf ${REPO_GCS_PATH} 2>/dev/null || true
-                        gsutil -m cp -r /tmp/repo-upload/* ${REPO_GCS_PATH}/
+                        echo "Uploading files..."
+                        gcloud storage cp -r /tmp/repo-upload/* ${REPO_GCS_PATH}/
                         
                         echo "✓ Code uploaded successfully"
                         echo ""
                         echo "Uploaded files:"
-                        gsutil ls ${REPO_GCS_PATH}/ | head -10
+                        gcloud storage ls ${REPO_GCS_PATH}/ --recursive | head -10
                     """
                 }
             }
@@ -247,10 +246,7 @@ pipeline {
                         echo "🚀 Submitting job to Dataproc..."
                         echo ""
                         
-                        # Activate credentials
-                        gcloud auth print-access-token > /dev/null
-                        
-                        # Submit the Hadoop job to Dataproc
+                        # Submit the Hadoop job to Dataproc (uses Workload Identity automatically)
                         gcloud dataproc jobs submit pyspark \\
                             gs://${STAGING_BUCKET}/hadoop-jobs/line_counter_pyspark.py \\
                             --cluster=${HADOOP_CLUSTER_NAME} \\
@@ -285,11 +281,8 @@ pipeline {
                         echo "📈 Line counts for Python files:"
                         echo ""
                         
-                        # Activate credentials
-                        gcloud auth print-access-token > /dev/null
-                        
-                        # Fetch and display results
-                        gsutil cat ${HADOOP_OUTPUT_PATH}/part-* 2>/dev/null || echo "Processing results..."
+                        # Fetch and display results using gcloud storage
+                        gcloud storage cat ${HADOOP_OUTPUT_PATH}/part-* 2>/dev/null || echo "Processing results..."
                         
                         echo ""
                         echo "════════════════════════════════════════════════════════════"
