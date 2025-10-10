@@ -225,8 +225,8 @@ pipeline {
                             echo "Quality Gate API Response: ${qgResponse}"
                             
                             def qgMatch = (qgResponse =~ /"status":"([^"]+)"/)
-                            if (qgMatch) {
-                                qualityGateStatus = qgMatch[0][1]
+                            if (qgMatch.find()) {
+                                qualityGateStatus = qgMatch.group(1)
                                 echo "✓ Quality Gate Status: ${qualityGateStatus}"
                             }
                             
@@ -242,8 +242,8 @@ pipeline {
                             echo "Blocker Issues API Response: ${blockerResponse}"
                             
                             def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
-                            if (blockerMatch) {
-                                blockerCount = blockerMatch[0][1]
+                            if (blockerMatch.find()) {
+                                blockerCount = blockerMatch.group(1)
                                 echo "✓ Blocker Issues Count: ${blockerCount}"
                             }
                             
