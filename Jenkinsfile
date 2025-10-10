@@ -241,10 +241,15 @@ pipeline {
                             
                             echo "Blocker Issues API Response: ${blockerResponse}"
                             
-                            def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
-                            if (blockerMatch.find()) {
-                                blockerCount = blockerMatch.group(1)
-                                echo "✓ Blocker Issues Count: ${blockerCount}"
+                            // Extract blocker count using simple string operations
+                            if (blockerResponse.contains('"total"')) {
+                                def startIdx = blockerResponse.indexOf('"total":') + 8
+                                def endIdx = blockerResponse.indexOf(',', startIdx)
+                                if (endIdx == -1) endIdx = blockerResponse.indexOf('}', startIdx)
+                                if (startIdx > 7 && endIdx > startIdx) {
+                                    blockerCount = blockerResponse.substring(startIdx, endIdx).trim()
+                                    echo "✓ Blocker Issues Count: ${blockerCount}"
+                                }
                             }
                             
                             // If we got valid responses, break
