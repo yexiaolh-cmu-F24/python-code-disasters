@@ -115,14 +115,24 @@ pipeline {
                         echo "Extraction completed"
                         
                         echo "=== Running SonarQube Analysis ==="
-                        ./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
+                        # Build scanner command - include token only if set
+                        SCANNER_CMD="./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
                             -Dsonar.projectKey=Python-Code-Disasters \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=\${SONARQUBE_URL} \
-                            -Dsonar.login=\${SONARQUBE_TOKEN} \
                             -Dsonar.python.version=3.8,3.9,3.10 \
                             -Dsonar.language=py \
-                            -Dsonar.qualitygate.wait=false || echo "Scanner completed with warnings"
+                            -Dsonar.qualitygate.wait=false"
+                        
+                        # Add token if available
+                        if [ -n "\${SONARQUBE_TOKEN:-}" ]; then
+                            SCANNER_CMD="\${SCANNER_CMD} -Dsonar.login=\${SONARQUBE_TOKEN}"
+                            echo "Using SonarQube authentication token"
+                        else
+                            echo "Running without authentication token (public access)"
+                        fi
+                        
+                        \${SCANNER_CMD} || echo "Scanner completed with warnings"
                     """
                 }
             }
