@@ -254,10 +254,21 @@ pipeline {
                             
                             echo "Quality Gate API Response: ${qgResponse}"
                             
-                            def qgMatch = (qgResponse =~ /"status":"([^"]+)"/)
-                            if (qgMatch.find()) {
-                                qualityGateStatus = qgMatch.group(1)
-                                echo "✓ Quality Gate Status: ${qualityGateStatus}"
+                            // Parse quality gate status
+                            if (qgResponse && qgResponse.trim().length() > 0) {
+                                try {
+                                    def qgMatch = qgResponse =~ /"status"\s*:\s*"([^"]+)"/
+                                    if (qgMatch) {
+                                        qualityGateStatus = qgMatch[0][1]
+                                        echo "✓ Quality Gate Status: ${qualityGateStatus}"
+                                    } else {
+                                        echo "⚠ Could not parse quality gate status from response"
+                                    }
+                                } catch (Exception e) {
+                                    echo "⚠ Error parsing quality gate response: ${e.message}"
+                                }
+                            } else {
+                                echo "⚠ Empty quality gate response - project may not exist yet"
                             }
                             
                             // Check blocker issues
@@ -271,10 +282,21 @@ pipeline {
                             
                             echo "Blocker Issues API Response: ${blockerResponse}"
                             
-                            def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
-                            if (blockerMatch.find()) {
-                                blockerCount = blockerMatch.group(1)
-                                echo "✓ Blocker Issues Count: ${blockerCount}"
+                            // Parse blocker count
+                            if (blockerResponse && blockerResponse.trim().length() > 0) {
+                                try {
+                                    def blockerMatch = blockerResponse =~ /"total"\s*:\s*(\d+)/
+                                    if (blockerMatch) {
+                                        blockerCount = blockerMatch[0][1]
+                                        echo "✓ Blocker Issues Count: ${blockerCount}"
+                                    } else {
+                                        echo "⚠ Could not parse blocker count from response"
+                                    }
+                                } catch (Exception e) {
+                                    echo "⚠ Error parsing blocker response: ${e.message}"
+                                }
+                            } else {
+                                echo "⚠ Empty blocker response - project may not exist yet"
                             }
                             
                             // If we got valid responses, break
