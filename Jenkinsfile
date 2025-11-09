@@ -199,7 +199,7 @@ pipeline {
                                 try {
                                     def taskResponse = sh(
                                         script: """
-                                            curl -s -u \${SONAR_USER}:\${SONAR_PASS} \
+                                            curl -s -u ${SONAR_USER}:${SONAR_PASS} \
                                             '${SONARQUBE_URL}/api/ce/task?id=${taskId}'
                                         """,
                                         returnStdout: true
@@ -251,7 +251,7 @@ pipeline {
                                 // Check quality gate status
                                 def qgResponse = sh(
                                     script: """
-                                        curl -s -u \${SONAR_USER}:\${SONAR_PASS} \
+                                        curl -s -u ${SONAR_USER}:${SONAR_PASS} \
                                         '${SONARQUBE_URL}/api/qualitygates/project_status?projectKey=Python-Code-Disasters'
                                     """,
                                     returnStdout: true
@@ -268,7 +268,7 @@ pipeline {
                                 // Check blocker issues
                                 def blockerResponse = sh(
                                     script: """
-                                        curl -s -u \${SONAR_USER}:\${SONAR_PASS} \
+                                        curl -s -u ${SONAR_USER}:${SONAR_PASS} \
                                         '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false'
                                     """,
                                     returnStdout: true
