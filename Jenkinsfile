@@ -115,13 +115,13 @@ pipeline {
                         echo "Extraction completed"
                         
                         echo "=== Running SonarQube Analysis ==="
-                        # Build scanner command - use admin:admin123 for authentication
+                        # Build scanner command - use admin:admin for authentication
                         SCANNER_CMD="./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
                             -Dsonar.projectKey=Python-Code-Disasters \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=\${SONARQUBE_URL} \
                             -Dsonar.login=admin \
-                            -Dsonar.password=admin123 \
+                            -Dsonar.password=admin \
                             -Dsonar.python.version=3.8,3.9,3.10 \
                             -Dsonar.language=py \
                             -Dsonar.qualitygate.wait=false"
@@ -169,7 +169,7 @@ pipeline {
                         echo "Using SONARQUBE_TOKEN for authentication"
                     } else {
                         // Fallback: use default admin password
-                        SONAR_PASS = "admin123"
+                        SONAR_PASS = "admin"
                         echo "⚠ Using default admin credentials (token not set)"
                     }
                     
