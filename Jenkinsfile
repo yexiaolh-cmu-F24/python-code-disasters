@@ -115,16 +115,23 @@ pipeline {
                         echo "Extraction completed"
                         
                         echo "=== Running SonarQube Analysis ==="
-                        # Build scanner command - use admin:admin for authentication
+                        # Build scanner command - use token if available, otherwise use admin:admin
                         SCANNER_CMD="./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
                             -Dsonar.projectKey=Python-Code-Disasters \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=\${SONARQUBE_URL} \
-                            -Dsonar.login=admin \
-                            -Dsonar.password=admin \
                             -Dsonar.python.version=3.8,3.9,3.10 \
                             -Dsonar.language=py \
                             -Dsonar.qualitygate.wait=false"
+                        
+                        # Add authentication - prefer token, fallback to username/password
+                        if [ -n "\${SONARQUBE_TOKEN:-}" ]; then
+                            SCANNER_CMD="\${SCANNER_CMD} -Dsonar.login=\${SONARQUBE_TOKEN}"
+                            echo "Using SonarQube token for authentication"
+                        else
+                            SCANNER_CMD="\${SCANNER_CMD} -Dsonar.login=admin -Dsonar.password=admin"
+                            echo "Using admin:admin for authentication (token not set)"
+                        fi
                         
                         echo "Running SonarQube scanner with authentication..."
                         \${SCANNER_CMD} || echo "Scanner completed with warnings"
