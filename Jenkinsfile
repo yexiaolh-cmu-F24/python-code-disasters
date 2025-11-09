@@ -168,22 +168,21 @@ pipeline {
                     def blockerCount = 'UNKNOWN'
                     
                     // Use SONARQUBE_TOKEN environment variable for authentication
-                    // If token is not set, use admin:admin123 as fallback
-                    def SONAR_USER = "admin"
-                    def SONAR_PASS = ""
+                    // If token is not set, use admin:admin as fallback
+                    def SONAR_AUTH = ""
                     
                     if (env.SONARQUBE_TOKEN && !env.SONARQUBE_TOKEN.isEmpty()) {
-                        SONAR_PASS = env.SONARQUBE_TOKEN
-                        echo "Using SONARQUBE_TOKEN for authentication"
+                        // Use token for authentication (token can be used directly in API calls)
+                        SONAR_AUTH = "${env.SONARQUBE_TOKEN}:"
+                        echo "Using SONARQUBE_TOKEN for API authentication"
                     } else {
-                        // Fallback: use default admin password
-                        SONAR_PASS = "admin"
+                        // Fallback: use default admin credentials
+                        SONAR_AUTH = "admin:admin"
                         echo "⚠ Using default admin credentials (token not set)"
                     }
                     
-                    // Use token/password for authentication in API calls
-                    env.SONAR_USER = SONAR_USER
-                    env.SONAR_PASS = SONAR_PASS
+                    // Store auth string for use in API calls
+                    env.SONAR_AUTH = SONAR_AUTH
                     
                     // Process SonarQube results (removed withCredentials wrapper)
                     // Wait for SonarQube to finish processing
@@ -199,14 +198,14 @@ pipeline {
                             sleep(time: waitInterval, unit: 'SECONDS')
                             totalWaitTime += waitInterval
                             
-                            try {
-                                def taskResponse = sh(
-                                    script: """
-                                        curl -s -u ${SONAR_USER}:${SONAR_PASS} \
-                                        '${SONARQUBE_URL}/api/ce/task?id=${taskId}'
-                                    """,
-                                    returnStdout: true
-                                ).trim()
+                                try {
+                                    def taskResponse = sh(
+                                        script: """
+                                            curl -s -u ${SONAR_AUTH} \
+                                            '${SONARQUBE_URL}/api/ce/task?id=${taskId}'
+                                        """,
+                                        returnStdout: true
+                                    ).trim()
                                 
                                 echo "Task response: ${taskResponse}"
                                 
@@ -254,7 +253,7 @@ pipeline {
                             // Check quality gate status
                             def qgResponse = sh(
                                 script: """
-                                    curl -s -u ${SONAR_USER}:${SONAR_PASS} \
+                                    curl -s -u ${SONAR_AUTH} \
                                     '${SONARQUBE_URL}/api/qualitygates/project_status?projectKey=Python-Code-Disasters'
                                 """,
                                 returnStdout: true
@@ -282,7 +281,7 @@ pipeline {
                             // Check blocker issues
                             def blockerResponse = sh(
                                 script: """
-                                    curl -s -u ${SONAR_USER}:${SONAR_PASS} \
+                                    curl -s -u ${SONAR_AUTH} \
                                     '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false'
                                 """,
                                 returnStdout: true
