@@ -6,6 +6,7 @@ pipeline {
         HADOOP_CLUSTER_NAME = "${env.HADOOP_CLUSTER_NAME}"
         HADOOP_REGION = "${env.HADOOP_REGION}"
         SONARQUBE_URL = "${env.SONARQUBE_URL}"
+        SONARQUBE_TOKEN = "${env.SONARQUBE_TOKEN ?: ''}"
         OUTPUT_BUCKET = "${env.OUTPUT_BUCKET}"
         STAGING_BUCKET = "${env.STAGING_BUCKET}"
         REPO_GCS_PATH = "gs://${OUTPUT_BUCKET}/repo-code"
