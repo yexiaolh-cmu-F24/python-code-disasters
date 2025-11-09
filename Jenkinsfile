@@ -164,12 +164,25 @@ pipeline {
                     def qualityGateStatus = 'UNKNOWN'
                     def blockerCount = 'UNKNOWN'
                     
-                    // Use Jenkins credentials for SonarQube authentication
-                    withCredentials([usernamePassword(
-                        credentialsId: 'sonarqube-admin-token',
-                        usernameVariable: 'SONAR_USER',
-                        passwordVariable: 'SONAR_PASS'
-                    )]) {
+                    // Use SONARQUBE_TOKEN environment variable for authentication
+                    // If token is not set, use admin:admin123 as fallback
+                    def SONAR_USER = "admin"
+                    def SONAR_PASS = ""
+                    
+                    if (env.SONARQUBE_TOKEN && !env.SONARQUBE_TOKEN.isEmpty()) {
+                        SONAR_PASS = env.SONARQUBE_TOKEN
+                        echo "Using SONARQUBE_TOKEN for authentication"
+                    } else {
+                        // Fallback: use default admin password
+                        SONAR_PASS = "admin123"
+                        echo "⚠ Using default admin credentials (token not set)"
+                    }
+                    
+                    // Use token/password for authentication in API calls
+                    env.SONAR_USER = SONAR_USER
+                    env.SONAR_PASS = SONAR_PASS
+                    
+                    {
                         // Wait for SonarQube to finish processing
                         def taskStatus = 'PENDING'
                         def maxWaitTime = 300  // 5 minutes max wait
