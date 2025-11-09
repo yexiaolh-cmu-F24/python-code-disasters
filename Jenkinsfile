@@ -18,7 +18,7 @@ pipeline {
                     ./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
                       -Dsonar.projectKey=python-code-disasters \
                       -Dsonar.sources=. \
-                      -Dsonar.host.url=\${SONAR_HOST_URL} \
+                      -Dsonar.host.url=\${SONARQUBE_URL} \
                       -Dsonar.login=\${SONAR_TOKEN} \
                       -Dsonar.python.version=3
                 """
@@ -28,7 +28,7 @@ pipeline {
 
     stage('Quality Gate (manual check for Week-6)') {
       steps {
-        echo "Open $SONAR_HOST_URL to view analysis and Quality Gate."
+        echo "Open $SONARQUBE_URL to view analysis and Quality Gate."
       }
     }
   }
