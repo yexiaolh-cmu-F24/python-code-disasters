@@ -290,32 +290,39 @@ pipeline {
                     echo "   - Blocker Issues Found: ${blockerCount}"
                     echo ''
                     
-                    // HARDCODED: Always run Hadoop for demonstration
-                    echo '⚠️  DEMO MODE: Bypassing quality gate checks'
-                    echo '⚠️  In production, quality gate would control Hadoop execution'
-                    echo ''
-                    
+                    // Decision logic: Only run Hadoop if no blocker issues
                     if (qualityGateStatus == 'UNKNOWN' || blockerCount == 'UNKNOWN') {
-                        echo '⚠️  Note: Could not retrieve complete information from SonarQube'
+                        echo '⚠️  WARNING: Could not retrieve complete information from SonarQube'
                         echo "   - Quality Gate Status: ${qualityGateStatus}"
                         echo "   - Blocker Count: ${blockerCount}"
+                        echo '   - Decision: SKIP Hadoop job (fail-safe mode)'
+                        env.RUN_HADOOP_JOB = 'false'
                     } else if (qualityGateStatus == 'ERROR') {
-                        echo '⚠️  Note: Quality Gate FAILED'
+                        echo '✗ Quality Gate: FAILED'
                         echo "   - Reason: Quality standards not met"
                         echo "   - Blocker Issues: ${blockerCount}"
+                        echo '   - Decision: SKIP Hadoop job'
+                        env.RUN_HADOOP_JOB = 'false'
                     } else if (blockerCount != '0') {
-                        echo '⚠️  Note: Blocker issues detected'
+                        echo '✗ Blocker Issues Detected'
                         echo "   - Quality Gate: ${qualityGateStatus}"
                         echo "   - Blocker Issues: ${blockerCount}"
+                        echo '   - Decision: SKIP Hadoop job'
+                        env.RUN_HADOOP_JOB = 'false'
                     } else {
                         echo '✓ Quality Gate: PASSED'
                         echo '✓ Blocker Issues: 0'
                         echo '✓ Code quality standards met'
+                        echo '   - Decision: RUN Hadoop job'
+                        env.RUN_HADOOP_JOB = 'true'
                     }
                     
                     echo ''
-                    echo '🚀 DECISION: Running Hadoop job (DEMO MODE - Quality checks bypassed)'
-                    env.RUN_HADOOP_JOB = 'true'
+                    if (env.RUN_HADOOP_JOB == 'true') {
+                        echo '🚀 DECISION: Running Hadoop MapReduce job'
+                    } else {
+                        echo '⏸️  DECISION: Skipping Hadoop MapReduce job'
+                    }
                     
                     echo '═══════════════════════════════════════════════════════════'
                     echo ''
