@@ -104,22 +104,26 @@ pipeline {
                 script {
                     echo 'Running SonarQube analysis...'
                     
-                    // Get the SonarQube Scanner tool
-                    def scannerHome = tool 'SonarQube Scanner'
-                    
-                    // Run SonarQube scanner
-                    withSonarQubeEnv('SonarQube') {
-                        // Run scanner and don't fail build on quality gate failure
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                                -Dsonar.projectKey=Python-Code-Disasters \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=${SONARQUBE_URL} \
-                                -Dsonar.python.version=3.8,3.9,3.10 \
-                                -Dsonar.language=py \
-                                -Dsonar.qualitygate.wait=false || echo "Scanner completed with warnings"
-                        """
-                    }
+                    // Download and use SonarQube Scanner CLI (no tool configuration needed)
+                    sh """
+                        set -eu
+                        SCAN_VERSION="5.0.1.3006"
+                        echo "Downloading SonarQube scanner version \${SCAN_VERSION}"
+                        curl -L -o scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-\${SCAN_VERSION}-linux.zip
+                        echo "Download completed, extracting..."
+                        unzip -q -o scanner.zip
+                        echo "Extraction completed"
+                        
+                        echo "=== Running SonarQube Analysis ==="
+                        ./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
+                            -Dsonar.projectKey=Python-Code-Disasters \
+                            -Dsonar.sources=. \
+                            -Dsonar.host.url=\${SONARQUBE_URL} \
+                            -Dsonar.login=\${SONARQUBE_TOKEN} \
+                            -Dsonar.python.version=3.8,3.9,3.10 \
+                            -Dsonar.language=py \
+                            -Dsonar.qualitygate.wait=false || echo "Scanner completed with warnings"
+                    """
                 }
             }
         }
