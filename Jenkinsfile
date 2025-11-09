@@ -115,23 +115,18 @@ pipeline {
                         echo "Extraction completed"
                         
                         echo "=== Running SonarQube Analysis ==="
-                        # Build scanner command - include token only if set
+                        # Build scanner command - use admin:admin123 for authentication
                         SCANNER_CMD="./sonar-scanner-\${SCAN_VERSION}-linux/bin/sonar-scanner \
                             -Dsonar.projectKey=Python-Code-Disasters \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=\${SONARQUBE_URL} \
+                            -Dsonar.login=admin \
+                            -Dsonar.password=admin123 \
                             -Dsonar.python.version=3.8,3.9,3.10 \
                             -Dsonar.language=py \
                             -Dsonar.qualitygate.wait=false"
                         
-                        # Add token if available
-                        if [ -n "\${SONARQUBE_TOKEN:-}" ]; then
-                            SCANNER_CMD="\${SCANNER_CMD} -Dsonar.login=\${SONARQUBE_TOKEN}"
-                            echo "Using SonarQube authentication token"
-                        else
-                            echo "Running without authentication token (public access)"
-                        fi
-                        
+                        echo "Running SonarQube scanner with authentication..."
                         \${SCANNER_CMD} || echo "Scanner completed with warnings"
                     """
                 }
@@ -182,121 +177,120 @@ pipeline {
                     env.SONAR_USER = SONAR_USER
                     env.SONAR_PASS = SONAR_PASS
                     
-                    {
-                        // Wait for SonarQube to finish processing
-                        def taskStatus = 'PENDING'
-                        def maxWaitTime = 300  // 5 minutes max wait
-                        def waitInterval = 10   // Check every 10 seconds
-                        def totalWaitTime = 0
+                    // Process SonarQube results (removed withCredentials wrapper)
+                    // Wait for SonarQube to finish processing
+                    def taskStatus = 'PENDING'
+                    def maxWaitTime = 300  // 5 minutes max wait
+                    def waitInterval = 10   // Check every 10 seconds
+                    def totalWaitTime = 0
+                    
+                    if (taskId) {
+                        echo "Waiting for SonarQube to process the analysis..."
                         
-                        if (taskId) {
-                            echo "Waiting for SonarQube to process the analysis..."
+                        while (totalWaitTime < maxWaitTime && taskStatus != 'SUCCESS' && taskStatus != 'FAILED') {
+                            sleep(time: waitInterval, unit: 'SECONDS')
+                            totalWaitTime += waitInterval
                             
-                            while (totalWaitTime < maxWaitTime && taskStatus != 'SUCCESS' && taskStatus != 'FAILED') {
-                                sleep(time: waitInterval, unit: 'SECONDS')
-                                totalWaitTime += waitInterval
-                                
-                                try {
-                                    def taskResponse = sh(
-                                        script: """
-                                            curl -s -u ${SONAR_USER}:${SONAR_PASS} \
-                                            '${SONARQUBE_URL}/api/ce/task?id=${taskId}'
-                                        """,
-                                        returnStdout: true
-                                    ).trim()
-                                    
-                                    echo "Task response: ${taskResponse}"
-                                    
-                                    def statusMatch = (taskResponse =~ /"status":"([^"]+)"/)
-                                    if (statusMatch) {
-                                        taskStatus = statusMatch[0][1]
-                                        echo "Task status: ${taskStatus} (waited ${totalWaitTime}s)"
-                                    }
-                                } catch (Exception e) {
-                                    echo "⚠ Error checking task status: ${e.message}"
-                                }
-                            }
-                            
-                            if (taskStatus == 'SUCCESS') {
-                                echo "✓ SonarQube analysis processing completed successfully"
-                                // Give it a few more seconds to update the quality gate
-                                sleep(time: 5, unit: 'SECONDS')
-                            } else if (taskStatus == 'FAILED') {
-                                echo "✗ SonarQube analysis processing failed"
-                                env.RUN_HADOOP_JOB = 'false'
-                                env.BLOCKER_COUNT = 'ANALYSIS_FAILED'
-                                env.QUALITY_GATE_STATUS = 'ERROR'
-                                return
-                            } else {
-                                echo "⚠ SonarQube analysis still processing after ${totalWaitTime}s"
-                            }
-                        } else {
-                            echo "⚠ Could not get task ID, waiting 60 seconds as fallback..."
-                            sleep(time: 60, unit: 'SECONDS')
-                        }
-                        
-                        echo ''
-                        echo '═══════════════════════════════════════════════════════════'
-                        echo '          Checking Quality Gate and Blocker Issues        '
-                        echo '═══════════════════════════════════════════════════════════'
-                        
-                        // Check the quality gate status and blocker count
-                        def maxRetries = 5
-                        def retryDelay = 10
-                        
-                        for (int i = 0; i < maxRetries; i++) {
                             try {
-                                echo "Attempt ${i+1}/${maxRetries}: Querying SonarQube API..."
-                                
-                                // Check quality gate status
-                                def qgResponse = sh(
+                                def taskResponse = sh(
                                     script: """
                                         curl -s -u ${SONAR_USER}:${SONAR_PASS} \
-                                        '${SONARQUBE_URL}/api/qualitygates/project_status?projectKey=Python-Code-Disasters'
+                                        '${SONARQUBE_URL}/api/ce/task?id=${taskId}'
                                     """,
                                     returnStdout: true
                                 ).trim()
                                 
-                                echo "Quality Gate API Response: ${qgResponse}"
+                                echo "Task response: ${taskResponse}"
                                 
-                                def qgMatch = (qgResponse =~ /"status":"([^"]+)"/)
-                                if (qgMatch.find()) {
-                                    qualityGateStatus = qgMatch.group(1)
-                                    echo "✓ Quality Gate Status: ${qualityGateStatus}"
-                                }
-                                
-                                // Check blocker issues
-                                def blockerResponse = sh(
-                                    script: """
-                                        curl -s -u ${SONAR_USER}:${SONAR_PASS} \
-                                        '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false'
-                                    """,
-                                    returnStdout: true
-                                ).trim()
-                                
-                                echo "Blocker Issues API Response: ${blockerResponse}"
-                                
-                                def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
-                                if (blockerMatch.find()) {
-                                    blockerCount = blockerMatch.group(1)
-                                    echo "✓ Blocker Issues Count: ${blockerCount}"
-                                }
-                                
-                                // If we got valid responses, break
-                                if (qualityGateStatus != 'UNKNOWN' && blockerCount != 'UNKNOWN') {
-                                    echo "✓ Successfully retrieved all required information"
-                                    break
-                                }
-                                
-                                if (i < maxRetries - 1) {
-                                    echo "⚠ Incomplete data received, waiting ${retryDelay}s before retry..."
-                                    sleep(time: retryDelay, unit: 'SECONDS')
+                                def statusMatch = (taskResponse =~ /"status":"([^"]+)"/)
+                                if (statusMatch) {
+                                    taskStatus = statusMatch[0][1]
+                                    echo "Task status: ${taskStatus} (waited ${totalWaitTime}s)"
                                 }
                             } catch (Exception e) {
-                                echo "⚠ Attempt ${i+1}/${maxRetries} failed: ${e.message}"
-                                if (i < maxRetries - 1) {
-                                    sleep(time: retryDelay, unit: 'SECONDS')
-                                }
+                                echo "⚠ Error checking task status: ${e.message}"
+                            }
+                        }
+                        
+                        if (taskStatus == 'SUCCESS') {
+                            echo "✓ SonarQube analysis processing completed successfully"
+                            // Give it a few more seconds to update the quality gate
+                            sleep(time: 5, unit: 'SECONDS')
+                        } else if (taskStatus == 'FAILED') {
+                            echo "✗ SonarQube analysis processing failed"
+                            env.RUN_HADOOP_JOB = 'false'
+                            env.BLOCKER_COUNT = 'ANALYSIS_FAILED'
+                            env.QUALITY_GATE_STATUS = 'ERROR'
+                            return
+                        } else {
+                            echo "⚠ SonarQube analysis still processing after ${totalWaitTime}s"
+                        }
+                    } else {
+                        echo "⚠ Could not get task ID, waiting 60 seconds as fallback..."
+                        sleep(time: 60, unit: 'SECONDS')
+                    }
+                    
+                    echo ''
+                    echo '═══════════════════════════════════════════════════════════'
+                    echo '          Checking Quality Gate and Blocker Issues        '
+                    echo '═══════════════════════════════════════════════════════════'
+                    
+                    // Check the quality gate status and blocker count
+                    def maxRetries = 5
+                    def retryDelay = 10
+                    
+                    for (int i = 0; i < maxRetries; i++) {
+                        try {
+                            echo "Attempt ${i+1}/${maxRetries}: Querying SonarQube API..."
+                            
+                            // Check quality gate status
+                            def qgResponse = sh(
+                                script: """
+                                    curl -s -u ${SONAR_USER}:${SONAR_PASS} \
+                                    '${SONARQUBE_URL}/api/qualitygates/project_status?projectKey=Python-Code-Disasters'
+                                """,
+                                returnStdout: true
+                            ).trim()
+                            
+                            echo "Quality Gate API Response: ${qgResponse}"
+                            
+                            def qgMatch = (qgResponse =~ /"status":"([^"]+)"/)
+                            if (qgMatch.find()) {
+                                qualityGateStatus = qgMatch.group(1)
+                                echo "✓ Quality Gate Status: ${qualityGateStatus}"
+                            }
+                            
+                            // Check blocker issues
+                            def blockerResponse = sh(
+                                script: """
+                                    curl -s -u ${SONAR_USER}:${SONAR_PASS} \
+                                    '${SONARQUBE_URL}/api/issues/search?componentKeys=Python-Code-Disasters&severities=BLOCKER&resolved=false'
+                                """,
+                                returnStdout: true
+                            ).trim()
+                            
+                            echo "Blocker Issues API Response: ${blockerResponse}"
+                            
+                            def blockerMatch = (blockerResponse =~ /"total":(\d+)/)
+                            if (blockerMatch.find()) {
+                                blockerCount = blockerMatch.group(1)
+                                echo "✓ Blocker Issues Count: ${blockerCount}"
+                            }
+                            
+                            // If we got valid responses, break
+                            if (qualityGateStatus != 'UNKNOWN' && blockerCount != 'UNKNOWN') {
+                                echo "✓ Successfully retrieved all required information"
+                                break
+                            }
+                            
+                            if (i < maxRetries - 1) {
+                                echo "⚠ Incomplete data received, waiting ${retryDelay}s before retry..."
+                                sleep(time: retryDelay, unit: 'SECONDS')
+                            }
+                        } catch (Exception e) {
+                            echo "⚠ Attempt ${i+1}/${maxRetries} failed: ${e.message}"
+                            if (i < maxRetries - 1) {
+                                sleep(time: retryDelay, unit: 'SECONDS')
                             }
                         }
                     }
