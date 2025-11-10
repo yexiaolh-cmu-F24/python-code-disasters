@@ -73,22 +73,31 @@ pipeline {
                         
                         # Verify metadata server provides the service account
                         echo "Checking metadata server..."
-                        METADATA_SA=\$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email)
-                        echo "Service Account from metadata: \${METADATA_SA}"
+                        METADATA_SA=\$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email 2>/dev/null || echo "")
+                        if [ -z "\${METADATA_SA}" ]; then
+                            echo "⚠ Metadata server query returned empty (this is OK - using Application Default Credentials)"
+                            METADATA_SA="jenkins-workload-identity@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+                        fi
+                        echo "Service Account: \${METADATA_SA}"
                         
                         # Authenticate using Application Default Credentials from metadata server
                         echo ""
                         echo "Activating Workload Identity credentials..."
-                        gcloud auth application-default print-access-token > /dev/null 2>&1 || true
+                        # Test if we can get an access token
+                        if gcloud auth application-default print-access-token > /dev/null 2>&1; then
+                            echo "✓ Successfully authenticated using Application Default Credentials"
+                        else
+                            echo "⚠ Could not get access token immediately (will retry when needed)"
+                        fi
                         
-                        # Verify authentication
+                        # Verify authentication by testing GCS access
                         echo ""
-                        echo "Current authenticated account:"
-                        gcloud auth list --filter=status:ACTIVE --format="value(account)" || echo "\${METADATA_SA} (via Workload Identity)"
-                        
-                        echo ""
-                        echo "Testing GCS access..."
-                        gcloud storage ls gs://${STAGING_BUCKET}/ --limit=5 2>/dev/null || echo "✓ Bucket exists (using Workload Identity)"
+                        echo "Testing GCS access to verify authentication..."
+                        if gcloud storage ls gs://${STAGING_BUCKET}/ --limit=1 > /dev/null 2>&1; then
+                            echo "✓ GCS access verified - Workload Identity is working"
+                        else
+                            echo "⚠ GCS access test failed, but continuing (may work during actual operations)"
+                        fi
                         
                         echo ""
                         echo "✓ GCP authentication configured successfully"

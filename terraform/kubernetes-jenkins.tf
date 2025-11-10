@@ -92,6 +92,16 @@ resource "kubernetes_deployment" "jenkins" {
       spec {
         service_account_name = kubernetes_service_account.jenkins_sa.metadata[0].name
 
+        # Fix DNS resolution for GitHub
+        host_aliases {
+          ip        = "140.82.121.3"
+          hostnames = ["github.com"]
+        }
+        host_aliases {
+          ip        = "140.82.112.3"
+          hostnames = ["github.com"]
+        }
+
         security_context {
           fs_group = 1000
         }
