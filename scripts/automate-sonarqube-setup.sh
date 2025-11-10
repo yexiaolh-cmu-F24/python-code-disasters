@@ -58,35 +58,39 @@ wait_for_sonarqube() {
 # Function to change admin password
 change_admin_password() {
     echo ""
-    echo "Step 1: Changing admin password..."
+    echo "Step 1: Checking authentication..."
     
-    # Check if password change is needed (try to authenticate with new password first)
+    # First, try to authenticate with admin123 (in case user changed it manually)
     if curl -s -u "$ADMIN_USER:$NEW_PASS" "$SONARQUBE_URL/api/authentication/validate" | grep -q '"valid":true'; then
-        echo "✓ Password already changed"
-        return 0
-    fi
-    
-    # Change password
-    local response=$(curl -s -X POST \
-        -u "$ADMIN_USER:$ADMIN_PASS" \
-        "$SONARQUBE_URL/api/users/change_password?login=$ADMIN_USER&password=$NEW_PASS&previousPassword=$ADMIN_PASS" 2>/dev/null)
-    
-    if echo "$response" | grep -q "error" || [ -z "$response" ]; then
-        # Try alternative API endpoint
-        response=$(curl -s -X POST \
-            -u "$ADMIN_USER:$ADMIN_PASS" \
-            -d "login=$ADMIN_USER&password=$NEW_PASS&previousPassword=$ADMIN_PASS" \
-            "$SONARQUBE_URL/api/users/change_password" 2>/dev/null)
-    fi
-    
-    # Verify password change
-    if curl -s -u "$ADMIN_USER:$NEW_PASS" "$SONARQUBE_URL/api/authentication/validate" | grep -q '"valid":true'; then
-        echo "✓ Admin password changed successfully"
+        echo "✓ Authenticated with admin:admin123 (password already changed)"
         ADMIN_PASS="$NEW_PASS"
         return 0
+    fi
+    
+    # Try with default admin password
+    if curl -s -u "$ADMIN_USER:$ADMIN_PASS" "$SONARQUBE_URL/api/authentication/validate" | grep -q '"valid":true'; then
+        echo "✓ Authenticated with admin:admin (default password)"
+        echo "  Attempting to change password to admin123..."
+        
+        # Try to change password (may fail due to network protection, that's OK)
+        local response=$(curl -s -X POST \
+            -u "$ADMIN_USER:$ADMIN_PASS" \
+            "$SONARQUBE_URL/api/users/change_password?login=$ADMIN_USER&password=$NEW_PASS&previousPassword=$ADMIN_PASS" 2>/dev/null)
+        
+        # Verify password change
+        if curl -s -u "$ADMIN_USER:$NEW_PASS" "$SONARQUBE_URL/api/authentication/validate" | grep -q '"valid":true'; then
+            echo "✓ Password changed to admin123"
+            ADMIN_PASS="$NEW_PASS"
+            return 0
+        else
+            echo "⚠ Password change failed (network protection may block POST requests)"
+            echo "  Continuing with admin:admin - you can change password manually later"
+            return 0
+        fi
     else
-        echo "⚠ Password change may have failed, but continuing..."
-        # Continue anyway - password might already be changed
+        echo "✗ Cannot authenticate with admin:admin or admin:admin123"
+        echo "  Please change password manually in SonarQube UI, then re-run this script"
+        return 1
     fi
 }
 

@@ -165,30 +165,24 @@ SONARQUBE_IP=$(kubectl get svc sonarqube-service -n sonarqube -o jsonpath='{.sta
 echo "SonarQube URL: http://${SONARQUBE_IP}:9000"
 ```
 
-### Step 8: Run Automated Setup Script
+### Step 8: Run Automated Setup
 
-**This is the only manual step required** - it automates all SonarQube and Jenkins configuration:
+**Automated token generation and Jenkins configuration:**
 
 ```bash
 cd scripts
-./run-automated-setup.sh
+./automate-token-generation.sh
 ```
 
 This script will:
-1. ✅ Wait for SonarQube to be ready
-2. ✅ Automatically configure SonarQube:
-   - Change admin password (to `admin123`)
-   - Create project (`Python-Code-Disasters`)
-   - Generate authentication token
-3. ✅ Wait for Jenkins to be ready
-4. ✅ Automatically configure Jenkins:
-   - Add SonarQube token credential
-   - Configure SonarQube server connection
-   - Create pipeline job
+1. ✅ Set up port-forwarding (bypasses network protection)
+2. ✅ Generate SonarQube authentication token automatically
+3. ✅ Create project (`Python-Code-Disasters`) automatically
+4. ✅ Set token in Jenkins deployment (auto-configures via init script)
 
-**No manual logins or passwords required** - everything is automated via API calls.
+**Note**: Password change can be done manually if needed. Token generation and Jenkins configuration are fully automated.
 
-**Note**: If the script fails, see `AUTOMATED_SETUP.md` for troubleshooting or manual setup instructions.
+**Note**: For restarting after billing is disabled, see `QUICK_START_AFTER_BILLING.md`.
 
 ### Step 9: (Optional) Configure GitHub Webhook for Auto-Trigger
 

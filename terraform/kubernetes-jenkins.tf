@@ -101,6 +101,16 @@ resource "kubernetes_deployment" "jenkins" {
           ip        = "140.82.112.3"
           hostnames = ["github.com"]
         }
+        
+        # Fix DNS resolution for SonarSource binaries
+        host_aliases {
+          ip        = "13.227.74.109"
+          hostnames = ["binaries.sonarsource.com"]
+        }
+        host_aliases {
+          ip        = "13.227.74.28"
+          hostnames = ["binaries.sonarsource.com"]
+        }
 
         security_context {
           fs_group = 1000
