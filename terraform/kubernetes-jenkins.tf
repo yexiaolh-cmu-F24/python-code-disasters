@@ -111,6 +111,12 @@ resource "kubernetes_deployment" "jenkins" {
           ip        = "13.227.74.28"
           hostnames = ["binaries.sonarsource.com"]
         }
+        
+        # Fix DNS resolution for SonarQube service
+        host_aliases {
+          ip        = "34.118.238.107"
+          hostnames = ["sonarqube-service", "sonarqube-service.sonarqube", "sonarqube-service.sonarqube.svc.cluster.local"]
+        }
 
         security_context {
           fs_group = 1000
