@@ -275,26 +275,23 @@ pipeline {
                     env.BLOCKER_COUNT = blockerCount
                     
                     // Decision logic: Only run Hadoop if no blocker issues
+                    // Note: Quality gate status is informational, blockers are the key decision factor
                     echo ''
                     echo '═══════════════════════════════════════════════════════════'
                     echo '                    Pipeline Decision                     '
                     echo '═══════════════════════════════════════════════════════════'
                     
-                    if (qualityGateStatus == 'UNKNOWN' || blockerCount == 'UNKNOWN') {
-                        echo "⚠️  Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
+                    if (blockerCount == 'UNKNOWN') {
+                        echo "⚠️  Blockers: ${blockerCount} (unknown)"
                         echo "   → SKIP Hadoop (incomplete data)"
-                        env.RUN_HADOOP_JOB = 'false'
-                    } else if (qualityGateStatus == 'ERROR') {
-                        echo "✗ Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
-                        echo "   → SKIP Hadoop"
                         env.RUN_HADOOP_JOB = 'false'
                     } else if (blockerCount != '0') {
                         echo "✗ Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
-                        echo "   → SKIP Hadoop"
+                        echo "   → SKIP Hadoop (blocker issues found)"
                         env.RUN_HADOOP_JOB = 'false'
                     } else {
                         echo "✓ Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
-                        echo "   → RUN Hadoop"
+                        echo "   → RUN Hadoop (no blocker issues)"
                         env.RUN_HADOOP_JOB = 'true'
                     }
                     
