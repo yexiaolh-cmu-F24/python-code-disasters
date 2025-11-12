@@ -356,8 +356,9 @@ if __name__ == "__main__":
     sc = SparkContext(appName="Repository File Line Counter")
     
     # Read all files from input path (not just Python files)
-    # wholeTextFiles automatically reads all files recursively
-    files_rdd = sc.wholeTextFiles(input_path)
+    # Use glob pattern to ensure all files are read recursively
+    # wholeTextFiles with **/* pattern reads all files recursively
+    files_rdd = sc.wholeTextFiles(input_path + "/**/*")
     
     # Extract filename and count lines per file
     def process_file(file_tuple):
