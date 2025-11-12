@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Hadoop MapReduce Job: Line Counter
-Counts the total number of lines in each Python file in the repository.
+Counts the total number of lines in each file in the repository.
 
 This script can be run as a PySpark job on Dataproc.
 """
@@ -16,13 +16,13 @@ def count_lines_per_file(sc, input_path):
     
     Args:
         sc: SparkContext
-        input_path: GCS path to input files (e.g., gs://bucket/repo-code/**/*.py)
+        input_path: GCS path to input files (e.g., gs://bucket/repo-code/**/*)
     
     Returns:
         RDD of (filename, line_count) tuples
     """
     # Read all files using wholeTextFiles to get (filepath, content) pairs
-    files_rdd = sc.wholeTextFiles(f"{input_path}/**/*.py")
+    files_rdd = sc.wholeTextFiles(f"{input_path}/**/*")
     
     # Extract filename and count lines
     def process_file(file_tuple):
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     print(f"Output path: {output_path}")
     
     # Create SparkContext
-    sc = SparkContext(appName="Python File Line Counter")
+    sc = SparkContext(appName="Repository File Line Counter")
     
     try:
         # Count lines per file

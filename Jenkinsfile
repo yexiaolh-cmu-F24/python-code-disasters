@@ -134,8 +134,7 @@ pipeline {
                         echo "⚠ Could not read task ID from report file: ${e.message}"
                     }
                     
-                    // Define variables outside withCredentials block so they're accessible later
-                    def qualityGateStatus = 'UNKNOWN'
+                    // Define blocker count variable
                     def blockerCount = 'UNKNOWN'
                     
                     // Use SONARQUBE_TOKEN environment variable for authentication
@@ -197,7 +196,6 @@ pipeline {
                             echo "✗ Analysis processing failed"
                             env.RUN_HADOOP_JOB = 'false'
                             env.BLOCKER_COUNT = 'ANALYSIS_FAILED'
-                            env.QUALITY_GATE_STATUS = 'ERROR'
                             return
                         }
                     } else {
@@ -205,35 +203,14 @@ pipeline {
                         sleep(time: 60, unit: 'SECONDS')
                     }
                     
-                    echo '📊 Checking Quality Gate and Blocker Issues...'
+                    echo '📊 Checking Blocker Issues...'
                     
-                    // Check the quality gate status and blocker count
+                    // Check blocker count only (quality gate not used for decision)
                     def maxRetries = 5
                     def retryDelay = 10
                     
                     for (int i = 0; i < maxRetries; i++) {
                         try {
-                            // Check quality gate status
-                            def qgResponse = sh(
-                                script: """
-                                    curl -s -u ${SONAR_AUTH} \
-                                    '${SONARQUBE_URL}/api/qualitygates/project_status?projectKey=Python-Code-Disasters'
-                                """,
-                                returnStdout: true
-                            ).trim()
-                            
-                            // Parse quality gate status
-                            if (qgResponse && qgResponse.trim().length() > 0) {
-                                try {
-                                    def qgMatch = qgResponse =~ /"status"\s*:\s*"([^"]+)"/
-                                    if (qgMatch) {
-                                        qualityGateStatus = qgMatch[0][1]
-                                    }
-                                } catch (Exception e) {
-                                    // Silent parse error
-                                }
-                            }
-                            
                             // Check blocker issues
                             def blockerResponse = sh(
                                 script: """
@@ -249,15 +226,11 @@ pipeline {
                                     def blockerMatch = blockerResponse =~ /"total"\s*:\s*(\d+)/
                                     if (blockerMatch) {
                                         blockerCount = blockerMatch[0][1]
+                                        break  // Got valid response, exit loop
                                     }
                                 } catch (Exception e) {
                                     // Silent parse error
                                 }
-                            }
-                            
-                            // If we got valid responses, break
-                            if (qualityGateStatus != 'UNKNOWN' && blockerCount != 'UNKNOWN') {
-                                break
                             }
                             
                             if (i < maxRetries - 1) {
@@ -270,12 +243,10 @@ pipeline {
                         }
                     }
                     
-                    // Store SonarQube results for reporting
-                    env.QUALITY_GATE_STATUS = qualityGateStatus
+                    // Store blocker count for reporting
                     env.BLOCKER_COUNT = blockerCount
                     
                     // Decision logic: Only run Hadoop if no blocker issues
-                    // Note: Quality gate status is informational, blockers are the key decision factor
                     echo ''
                     echo '═══════════════════════════════════════════════════════════'
                     echo '                    Pipeline Decision                     '
@@ -286,12 +257,12 @@ pipeline {
                         echo "   → SKIP Hadoop (incomplete data)"
                         env.RUN_HADOOP_JOB = 'false'
                     } else if (blockerCount != '0') {
-                        echo "✗ Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
-                        echo "   → SKIP Hadoop (blocker issues found)"
+                        echo "✗ Blockers: ${blockerCount}"
+                        echo "   → SKIP Hadoop"
                         env.RUN_HADOOP_JOB = 'false'
                     } else {
-                        echo "✓ Quality Gate: ${qualityGateStatus} | Blockers: ${blockerCount}"
-                        echo "   → RUN Hadoop (no blocker issues)"
+                        echo "✓ Blockers: ${blockerCount}"
+                        echo "   → RUN Hadoop"
                         env.RUN_HADOOP_JOB = 'true'
                     }
                     
@@ -313,8 +284,15 @@ pipeline {
                         rm -rf /tmp/repo-upload
                         mkdir -p /tmp/repo-upload
                         
-                        # Copy Python files to upload directory
-                        find . -name '*.py' -type f -exec cp --parents {} /tmp/repo-upload/ \\;
+                        # Copy all files to upload directory (excluding .git, .terraform, etc.)
+                        find . -type f \\
+                            ! -path './.git/*' \\
+                            ! -path './.terraform/*' \\
+                            ! -path './.terraform.lock.hcl' \\
+                            ! -path './.scannerwork/*' \\
+                            ! -name '*.pyc' \\
+                            ! -name '__pycache__' \\
+                            -exec cp --parents {} /tmp/repo-upload/ \\;
                         
                         echo ""
                         echo "Uploading to ${REPO_GCS_PATH}..."
@@ -454,7 +432,7 @@ PYSPARK_SCRIPT
                     echo '══════════════════════════════════════════════════'
                     echo '                      Summary                     '
                     echo '══════════════════════════════════════════════════'
-                    echo "Quality Gate: ${env.QUALITY_GATE_STATUS ?: 'N/A'} | Blockers: ${env.BLOCKER_COUNT ?: 'N/A'}"
+                    echo "Blockers: ${env.BLOCKER_COUNT ?: 'N/A'}"
                     echo "Hadoop Job: ${env.RUN_HADOOP_JOB == 'true' ? 'EXECUTED' : 'SKIPPED'}"
                     if (env.RUN_HADOOP_JOB == 'true' && env.HADOOP_OUTPUT_PATH) {
                         echo "Output: ${env.HADOOP_OUTPUT_PATH}"
