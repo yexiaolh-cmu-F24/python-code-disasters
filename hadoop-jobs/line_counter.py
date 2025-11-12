@@ -22,7 +22,9 @@ def count_lines_per_file(sc, input_path):
         RDD of (filename, line_count) tuples
     """
     # Read all files using wholeTextFiles to get (filepath, content) pairs
-    files_rdd = sc.wholeTextFiles(f"{input_path}/**/*")
+    # wholeTextFiles reads all files recursively from the given path
+    # Note: Use the base path, wholeTextFiles will recursively read all files
+    files_rdd = sc.wholeTextFiles(input_path)
     
     # Extract filename and count lines
     def process_file(file_tuple):
