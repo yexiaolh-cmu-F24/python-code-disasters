@@ -353,20 +353,26 @@ if __name__ == "__main__":
     input_path = sys.argv[1]
     output_path = sys.argv[2]
     
-    sc = SparkContext(appName="LineCounter")
+    sc = SparkContext(appName="Repository File Line Counter")
     
-    # Read all Python files from input path
-    input_files = input_path + "/**/*.py"
-    lines_rdd = sc.textFile(input_files)
+    # Read all files from input path (not just Python files)
+    # wholeTextFiles automatically reads all files recursively
+    files_rdd = sc.wholeTextFiles(input_path)
     
-    # Get input file name for each line and count lines per file
-    def extract_filename_and_count(line):
-        # Get the input file name from Spark's input metadata
-        return (1,)  # Simple count
+    # Extract filename and count lines per file
+    def process_file(file_tuple):
+        filepath, content = file_tuple
+        # Extract just the filename from the full path
+        filename = filepath.split('/')[-1]
+        # Count lines (split by newline)
+        line_count = len(content.split('\\n'))
+        return (filename, line_count)
     
-    # Count total lines per file by using wholeTextFiles
-    files_rdd = sc.wholeTextFiles(input_files)
-    line_counts = files_rdd.map(lambda x: (x[0].split('/')[-1], len(x[1].split('\\n'))))
+    # Map to get (filename, line_count) pairs
+    line_counts = files_rdd.map(process_file)
+    
+    # Reduce by key to handle duplicate filenames (sum their line counts)
+    line_counts = line_counts.reduceByKey(lambda a, b: a + b)
     
     # Sort by filename and save
     sorted_counts = line_counts.sortByKey()
