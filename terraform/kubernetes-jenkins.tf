@@ -183,7 +183,7 @@ resource "kubernetes_deployment" "jenkins" {
 
           env {
             name  = "SONARQUBE_TOKEN"
-            value = ""  # Will be set by setup job or manually
+            value = "squ_81d4e790a00037c5f4479ba65f456992d23d9bdd"  # SonarQube API token for Jenkins
           }
 
           resources {

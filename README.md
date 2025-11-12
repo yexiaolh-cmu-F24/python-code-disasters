@@ -109,14 +109,6 @@ chmod +x deploy-all.sh
 ./deploy-all.sh
 ```
 
-**Option B: Manual Terraform Deployment**
-
-```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
-```
 
 This will create:
 - GKE cluster for Jenkins and SonarQube
@@ -165,20 +157,16 @@ SONARQUBE_IP=$(kubectl get svc sonarqube-service -n sonarqube -o jsonpath='{.sta
 echo "SonarQube URL: http://${SONARQUBE_IP}:9000"
 ```
 
-### Step 8: Run Automated Setup
+### Step 8: SonarQube Token Configuration
 
-**Automated token generation and Jenkins configuration:**
+**Token is configured directly in Terraform:**
 
-```bash
-cd scripts
-./automate-token-generation.sh
-```
+The SonarQube API token is hardcoded in `terraform/kubernetes-jenkins.tf` as an environment variable. When you run `terraform apply`, the token is automatically set in Jenkins.
 
-This script will:
-1. ✅ Set up port-forwarding (bypasses network protection)
-2. ✅ Generate SonarQube authentication token automatically
-3. ✅ Create project (`Python-Code-Disasters`) automatically
-4. ✅ Set token in Jenkins deployment (auto-configures via init script)
+**If you need to update the token:**
+1. Generate a new token in SonarQube UI (if needed)
+2. Update `terraform/kubernetes-jenkins.tf` with the new token
+3. Run `terraform apply` to update Jenkins deployment
 
 **Note**: Password change can be done manually if needed. Token generation and Jenkins configuration are fully automated.
 
@@ -274,7 +262,7 @@ Use the provided script to view results:
 
 ```bash
 cd scripts
-./view-results.sh [optional_output_path]
+python3 scripts/view-results.py [optional_output_path]
 ```
 
 If no path is provided, it shows the latest results.
@@ -325,9 +313,7 @@ python-code-disasters/
 │   └── outputs.tf
 ├── scripts/                    # Deployment and utility scripts
 │   ├── deploy-all.sh
-│   ├── setup-jenkins.sh
-│   ├── init-hadoop.sh
-│   ├── view-results.sh
+│   ├── (token configured in Terraform)
 │   └── view-results.py
 ├── hadoop-jobs/               # Hadoop MapReduce jobs
 │   └── line_counter.py

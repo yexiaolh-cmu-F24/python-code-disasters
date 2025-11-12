@@ -84,7 +84,7 @@ print(f"{BLUE}Results Path: {output_path}{NC}")
 print("")
 
 # Fetch results
-print(f"{YELLOW}Line counts for Python files:{NC}")
+print(f"{YELLOW}Line counts for all files:{NC}")
 print("")
 
 # Get all part files - need to quote the pattern to prevent shell expansion
@@ -134,12 +134,19 @@ for part_file in part_files:
             line = line.strip()
             if not line:
                 continue
-            # Match Python tuple format: ('filename.py', count)
-            match = re.match(r"^\('(.+)',\s*(\d+)\)$", line)
+            # Match format: "filename": count
+            match = re.match(r'^"(.+)":\s*(\d+)$', line)
             if match:
                 filename = match.group(1)
                 count = int(match.group(2))
                 results.append((filename, count))
+            else:
+                # Fallback: Try Python tuple format: ('filename.py', count)
+                match = re.match(r"^\('(.+)',\s*(\d+)\)$", line)
+                if match:
+                    filename = match.group(1)
+                    count = int(match.group(2))
+                    results.append((filename, count))
     except Exception as e:
         print(f"Error reading {part_file}: {e}")
 
