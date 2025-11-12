@@ -374,9 +374,15 @@ if __name__ == "__main__":
     # Reduce by key to handle duplicate filenames (sum their line counts)
     line_counts = line_counts.reduceByKey(lambda a, b: a + b)
     
-    # Sort by filename and save
+    # Format output as "filename": count
+    def format_output(filename_count):
+        filename, count = filename_count
+        return f'"{filename}": {count}'
+    
+    # Sort by filename, format, and save
     sorted_counts = line_counts.sortByKey()
-    sorted_counts.saveAsTextFile(output_path)
+    formatted_output = sorted_counts.map(format_output)
+    formatted_output.saveAsTextFile(output_path)
     
     sc.stop()
 PYSPARK_SCRIPT
